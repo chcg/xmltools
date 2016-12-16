@@ -1,0 +1,65 @@
+version: Build {Build}
+image: Visual Studio 2015
+
+environment:
+  matrix:
+  - PlatformToolset: v120_xp
+  - PlatformToolset: v140_xp
+
+platform:
+    - x64
+    - Win32
+
+configuration:
+    - Release
+    - Debug
+
+install:
+    - if "%platform%"=="x64" set archi=amd64
+    - if "%platform%"=="Win32" set archi=x86
+    - call "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat" %archi%
+
+build:
+    parallel: true                  # enable MSBuild parallel builds
+    verbosity: minimal
+
+build_script:
+    - cd "%APPVEYOR_BUILD_FOLDER%"
+    - msbuild XMLTools.sln /m /p:configuration="%configuration%" /p:platform="%platform%" /p:PlatformToolset="%PlatformToolset%"
+
+after_build:
+- ps: |
+    cd c:\projects\xmltools\
+
+    $XMLToolsFileName = "XMLTools.$env:PLATFORM.$env:CONFIGURATION.$env:PLATFORMTOOLSET.dll"
+    Push-AppveyorArtifact "release\$env:CONFIGURATION\XMLTools.dll" -FileName "$XMLToolsFileName"
+
+    if ($($env:APPVEYOR_REPO_TAG) -eq "true" -and $env:PLATFORMTOOLSET -eq "v120_xp" -and $env:CONFIGURATION -eq "Release")
+    {
+        $ZipFileName = "XMLTools_$($env:APPVEYOR_REPO_TAG_NAME)_$env:PLATFORM.zip"
+        md deploy -Force | Out-Null
+        md deploy\XMLTools -Force | Out-Null
+        Copy-Item release\$env:CONFIGURATION\XMLTools.dll deploy\XMLTools.dll
+        Copy-Item bin\XMLTools\*.* deploy\XMLTools\
+        7z a $ZipFileName .\deploy\*
+        Remove-Item deploy\XMLTools.dll
+        Remove-Item deploy\XMLTools\*.*
+    }
+
+artifacts:
+  - path: XMLTools_*.zip
+    name: releases
+
+deploy:
+    provider: GitHub
+    description: ''
+    auth_token:
+        secure: !!!TODO!!!
+    artifact: releases
+    draft: false
+    prerelease: false
+    force_update: true
+    on:
+        appveyor_repo_tag: true
+        PlatformToolset: v120_xp
+        configuration: Release
